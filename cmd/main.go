@@ -26,7 +26,7 @@ func main() {
 	// 	IsMobile:          false,
 	// })
 	resp, err := ec.CreateShipOrder(ecpayShipping.CreateShippingOrderConfig{
-		MerchantTradeNo:   "test123456789",
+		MerchantTradeNo:   "test1237a",
 		TradeDate:         time.Now(),
 		ShippingStoreType: "711",
 		Amount:            100,
@@ -36,10 +36,17 @@ func main() {
 		ReceiverPhone:     "0912345678",
 		ReceiverEmail:     "abc@gmail.com",
 		ReceiverStoreID:   "131386",
-		ClientReplyURL:    "https://www.ecpay.com.tw/receive.php",
+		ClientReplyURL:    "",
 	})
 	if err != nil {
-		fmt.Printf("%+v", err)
+		fmt.Printf("get error: %+v\n", err)
+		return
 	}
-	fmt.Printf("%+v", resp)
+	fmt.Printf("%+v\n", resp)
+
+	r, err := ec.ParseShipOrderResponse(resp)
+	if err != nil {
+		fmt.Printf("get parse error: %+v\n", err)
+	}
+	fmt.Printf("parse: %+v", r)
 }
