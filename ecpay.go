@@ -111,6 +111,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 	for key, value := range postData {
 		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
 	}
+	url := fmt.Sprintf("%s/map", e.getURL())
 
 	html := fmt.Sprintf(`
 		<!DOCTYPE html>
@@ -119,7 +120,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 						<title></title>
 					</head>
 					<body>
-						<form id="myForm" method="POST" action="/">
+						<form id="myForm" method="POST" action="%s">
 							<input type="hidden" id="name" name="name" value="%s" required><br><br>
 						</form>
 
@@ -131,7 +132,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 						</script>
 					</body>
 					</html>
-	`, postDataHtml)
+	`, url, postDataHtml)
 
 	return html, nil
 }
