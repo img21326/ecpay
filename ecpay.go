@@ -29,7 +29,7 @@ type ChooseShipStoreConfig struct {
 	NeedPayment       bool
 	ServerReplyURL    string
 	IsMobile          bool
-	Extra             interface{}
+	Extra             string
 }
 
 type ChooseShipStoreResponse struct {
@@ -104,7 +104,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 		"LogisticsSubType": FormatStoreType(config.ShippingStoreType),
 		"IsCollection":     FormatNeedPayment(config.NeedPayment),
 		"ServerReplyURL":   config.ServerReplyURL,
-		"ExtraData":        fmt.Sprintf("%v", config.Extra),
+		"ExtraData":        config.Extra,
 		"Device":           FormatIsMobile(config.IsMobile),
 	}
 
