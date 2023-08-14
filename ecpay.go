@@ -121,7 +121,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 					</head>
 					<body>
 						<form id="myForm" method="POST" action="%s">
-							<input type="hidden" id="name" name="name" value="%s" required><br><br>
+							%s
 						</form>
 
 						<script>
