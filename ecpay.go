@@ -3,6 +3,7 @@ package ecpay_shipping
 import (
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -163,34 +164,19 @@ func (e *EcpayShippingImpl) CreateShipOrder(config CreateShippingOrderConfig) (s
 	checkMac := NewCheckMacValueService(e.EcpayConfig).GenerateCheckMacValue(params)
 	params["CheckMacValue"] = checkMac
 
-	postDataHtml := ""
-	for key, value := range params {
-		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
+	resp, err := e.client.R().SetFormData(params).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetHeader("Cache-Control", "no-cache").
+		Post(fmt.Sprintf("%v/Create", e.getURL()))
+	if err != nil {
+		return "", err
 	}
-	url := fmt.Sprintf("%s/Create", e.getURL())
-
-	html := fmt.Sprintf(`
-		<!DOCTYPE html>
-					<html>
-					<head>
-						<title></title>
-					</head>
-					<body>
-						<form id="myForm" method="POST" action="%s">
-							%s
-						</form>
-
-						<script>
-							// Automatically submit the form when the page loads
-							document.addEventListener("DOMContentLoaded", function() {
-								document.getElementById("myForm").submit();
-							});
-						</script>
-					</body>
-					</html>
-	`, url, postDataHtml)
-
-	return html, nil
+	respString := resp.String()
+	param := strings.Split(respString, "|")
+	if param[0] != "1" {
+		return "", fmt.Errorf("response error status: %v, err: %v", param[0], param[1])
+	}
+	return param[1], nil
 }
 
 func (e *EcpayShippingImpl) ParseShipOrderResponse(resp string) (ShipOrderResponse, error) {

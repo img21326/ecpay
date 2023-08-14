@@ -16,7 +16,7 @@ func main() {
 		IsProduction: false,
 
 		SenderName:     "test",
-		SenderPhone:    "912345678",
+		SenderPhone:    "0912345678",
 		ServerReplyURL: "http://localhost:8000/test",
 	})
 
@@ -35,7 +35,7 @@ func main() {
 		NeedPayment:       true,
 		EntreeName:        "name",
 		ReceiverName:      "你好嗎",
-		ReceiverPhone:     "0912345678",
+		ReceiverPhone:     "0912345679",
 		ReceiverEmail:     "test@gmail.com",
 		ReceiverStoreID:   "131386",
 		ClientReplyURL:    "",
