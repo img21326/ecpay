@@ -96,7 +96,7 @@ func (e *EcpayShippingImpl) getURL() string {
 }
 
 func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (string, error) {
-	resp, err := e.client.R().SetFormData(map[string]string{
+	postData := map[string]string{
 		"MerchantID":       e.MerchantID,
 		"MerchantTradeNo":  config.MerchantTradeNo,
 		"LogisticsType":    "CVS",
@@ -105,19 +105,35 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 		"ServerReplyURL":   config.ServerReplyURL,
 		"ExtraData":        "",
 		"Device":           FormatIsMobile(config.IsMobile),
-	}).
-		SetHeader("Content-Type", "application/x-www-form-urlencoded").
-		SetHeader("Cache-Control", "no-cache").
-		Post(fmt.Sprintf("%v/map", e.getURL()))
-
-	if err != nil {
-		return "", err
 	}
 
-	if resp.IsErrorState() {
-		return "", fmt.Errorf("http status code %v", resp.StatusCode)
+	postDataHtml := ""
+	for key, value := range postData {
+		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
 	}
-	return resp.String(), nil
+
+	html := fmt.Sprintf(`
+		<!DOCTYPE html>
+					<html>
+					<head>
+						<title></title>
+					</head>
+					<body>
+						<form id="myForm" method="POST" action="/">
+							<input type="hidden" id="name" name="name" value="%s" required><br><br>
+						</form>
+
+						<script>
+							// Automatically submit the form when the page loads
+							document.addEventListener("DOMContentLoaded", function() {
+								document.getElementById("myForm").submit();
+							});
+						</script>
+					</body>
+					</html>
+	`, postDataHtml)
+
+	return html, nil
 }
 
 func (e *EcpayShippingImpl) CreateShipOrder(config CreateShippingOrderConfig) (string, error) {
