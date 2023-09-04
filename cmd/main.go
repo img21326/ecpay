@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	ecpayShipping "github.com/img21326/ecpay_shipping"
+	ecpayShipping "github.com/img21326/ecpay"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-package ecpay_shipping
+package ecpay
 
 import (
 	"crypto/md5"

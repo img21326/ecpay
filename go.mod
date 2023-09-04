@@ -1,4 +1,4 @@
-module github.com/img21326/ecpay_shipping
+module github.com/img21326/ecpay
 
 go 1.20
 

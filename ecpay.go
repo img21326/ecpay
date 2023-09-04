@@ -1,8 +1,9 @@
-package ecpay_shipping
+package ecpay
 
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -84,12 +85,26 @@ type PaymentConfig struct {
 	ClientReplyURL  string
 }
 
+type PaymentResponse struct {
+	MerchantID        string
+	MerchantTradeNo   string
+	StoreID           string
+	RtnCode           string
+	RtnMsg            string
+	BankTransactionID string
+	Amount            float64
+	TradeDate         string
+	PaymentType       string
+	PaymentFee        float64
+}
+
 type Ecpay interface {
 	ChooseShipStore(config ChooseShipStoreConfig) (string, error)
 	CreateShipOrder(config CreateShippingOrderConfig) (string, error)
 	ParseShipOrderResponse(resp string) (ShipOrderResponse, error)
 
 	CreatePaymentOrder(config PaymentConfig) (string, error)
+	ParsePaymentResult(resp string) (*PaymentResponse, error)
 }
 
 type EcpayImpl struct {
@@ -298,132 +313,35 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 	return html, nil
 }
 
-func TransferStoreType(storeType string) string {
-	switch storeType {
-	case "FAMIC2C":
-		return "FAMI"
-	case "UNIMARTC2C":
-		return "711"
-	case "HILIFEC2C":
-		return "HI-LIFI"
-	case "OKMARTC2C":
-		return "OK"
-	default:
-		return ""
+func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
+	values, err := url.ParseQuery(resp)
+	if err != nil {
+		return nil, err
 	}
-}
-
-const CREATED = "CREATED"
-const SELLER_SEND_TO_STORE = "SELLER_SEND_TO_STORE"
-const DELIVERED = "DELIVERED"
-const BUYER_PICK_UP = "BUYER_PICK_UP"
-const BUYER_DIDNT_PICK_UP = "BUYER_DIDNT_PICK_UP"
-const RETURN_TO_STORE = "RETURN_TO_STORE"
-const RETURNED = "RETURNED"
-const UNDEFINE = "UNDEFINE"
-
-var SevenStatus = map[string]string{
-	"300":  CREATED,
-	"2068": SELLER_SEND_TO_STORE,
-	"2030": SELLER_SEND_TO_STORE,
-	"2073": DELIVERED,
-	"2067": BUYER_PICK_UP,
-	"2074": BUYER_DIDNT_PICK_UP,
-	"2072": RETURN_TO_STORE,
-	"2070": RETURNED,
-}
-
-var FamiStatus = map[string]string{
-	"300":  CREATED,
-	"3024": SELLER_SEND_TO_STORE,
-	"3018": DELIVERED,
-	"3022": BUYER_PICK_UP,
-	"3020": BUYER_DIDNT_PICK_UP,
-	"3019": RETURN_TO_STORE,
-	"3023": RETURNED,
-}
-
-var HiLifeStatus = map[string]string{
-	"300":  CREATED,
-	"2030": SELLER_SEND_TO_STORE,
-	"3024": SELLER_SEND_TO_STORE,
-	"3032": SELLER_SEND_TO_STORE,
-	"2063": DELIVERED,
-	"3018": DELIVERED,
-	"2067": BUYER_PICK_UP,
-	"3022": BUYER_PICK_UP,
-	"2074": BUYER_DIDNT_PICK_UP,
-	"3020": BUYER_DIDNT_PICK_UP,
-	"2072": RETURN_TO_STORE,
-	"3019": RETURN_TO_STORE,
-	"2070": RETURNED,
-	"3023": RETURNED,
-	"9001": RETURNED,
-	"9002": RETURNED,
-}
-
-var OkStatus = map[string]string{
-	"300":  CREATED,
-	"2030": SELLER_SEND_TO_STORE,
-	"2073": DELIVERED,
-	"3022": BUYER_PICK_UP,
-	"2074": BUYER_DIDNT_PICK_UP,
-	"2072": RETURN_TO_STORE,
-	"3023": RETURNED,
-}
-
-func TransferStatus(storeType string, rtnCode string) string {
-	switch storeType {
-	case "FAMI":
-		if val, ok := FamiStatus[rtnCode]; ok {
-			return val
+	var respMap = make(map[string]string)
+	for key, value := range values {
+		if key == "CheckMacValue" {
+			continue
 		}
-		return UNDEFINE
-	case "711":
-		if val, ok := SevenStatus[rtnCode]; ok {
-			return val
-		}
-		return UNDEFINE
-	case "HI-LIFI":
-		if val, ok := HiLifeStatus[rtnCode]; ok {
-			return val
-		}
-		return UNDEFINE
-	case "OK":
-		if val, ok := OkStatus[rtnCode]; ok {
-			return val
-		}
-		return UNDEFINE
-	default:
-		return UNDEFINE
+		respMap[key] = value[0]
 	}
-}
+	checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(respMap)
+	if checkMac != values.Get("CheckMacValue") {
+		return nil, fmt.Errorf("check mac value error")
+	}
+	amount, _ := strconv.ParseFloat(respMap["TradeAmt"], 64)
+	paymentFee, _ := strconv.ParseFloat(respMap["PaymentTypeChargeFee"], 64)
 
-func FormatStoreType(storeType string) string {
-	switch storeType {
-	case "FAMI":
-		return "FAMIC2C"
-	case "711":
-		return "UNIMARTC2C"
-	case "HI-LIFI":
-		return "HILIFEC2C"
-	case "OK":
-		return "OKMARTC2C"
-	default:
-		return ""
-	}
-}
-
-func FormatNeedPayment(needPayment bool) string {
-	if needPayment {
-		return "Y"
-	}
-	return "N"
-}
-
-func FormatIsMobile(isMobile bool) string {
-	if isMobile {
-		return "1"
-	}
-	return "0"
+	var response *PaymentResponse
+	response.MerchantID = respMap["MerchantID"]
+	response.MerchantTradeNo = respMap["MerchantTradeNo"]
+	response.StoreID = respMap["StoreID"]
+	response.RtnCode = respMap["RtnCode"]
+	response.RtnMsg = respMap["RtnMsg"]
+	response.BankTransactionID = respMap["BankTransactionID"]
+	response.Amount = amount
+	response.TradeDate = respMap["TradeDate"]
+	response.PaymentType = respMap["PaymentType"]
+	response.PaymentFee = paymentFee
+	return response, nil
 }
