@@ -2,6 +2,7 @@ package ecpay_shipping
 
 import (
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/url"
@@ -13,31 +14,52 @@ type CheckMacValueService interface {
 	GenerateCheckMacValue(params map[string]string) string
 }
 
-type checkMacValueService struct {
+type shipMacService struct {
 	ec EcpayConfig
 }
 
-func NewCheckMacValueService(ec EcpayConfig) CheckMacValueService {
-	return &checkMacValueService{
+type paymentMacService struct {
+	ec EcpayConfig
+}
+
+func NewShipMacValue(ec EcpayConfig) CheckMacValueService {
+	return &shipMacService{
 		ec: ec,
 	}
 }
 
-func (c *checkMacValueService) GenerateCheckMacValue(params map[string]string) string {
+func (c *shipMacService) GenerateCheckMacValue(params map[string]string) string {
 	encodedParams := NewECPayValuesFromMap(params).Encode()
 	encodedParams = fmt.Sprintf("HashKey=%s&%s&HashIV=%s", c.ec.HashKey, encodedParams, c.ec.HashIV)
-	encodedParams = c.formUrlEncode(encodedParams)
+	encodedParams = FormUrlEncode(encodedParams)
 	encodedParams = strings.ToLower(encodedParams)
 	sum := md5.Sum([]byte(encodedParams))
 	checkMac := strings.ToUpper(hex.EncodeToString(sum[:]))
 	return checkMac
 }
 
-func (c *checkMacValueService) formUrlEncode(s string) string {
+func NewPaymentMacValue(ec EcpayConfig) CheckMacValueService {
+	return &paymentMacService{
+		ec: ec,
+	}
+}
+
+func (c *paymentMacService) GenerateCheckMacValue(params map[string]string) string {
+	encodedParams := NewECPayValuesFromMap(params).Encode()
+	encodedParams = fmt.Sprintf("HashKey=%s&%s&HashIV=%s", c.ec.HashKey, encodedParams, c.ec.HashIV)
+	encodedParams = FormUrlEncode(encodedParams)
+	encodedParams = strings.ToLower(encodedParams)
+	sum := sha256.Sum256([]byte(encodedParams))
+	checkMac := strings.ToUpper(hex.EncodeToString(sum[:]))
+	return checkMac
+}
+
+func FormUrlEncode(s string) string {
 	s = url.QueryEscape(s)
 	s = strings.ReplaceAll(s, "%21", "!")
 	s = strings.ReplaceAll(s, "%2A", "*")
 	s = strings.ReplaceAll(s, "%28", "(")
+	s = strings.ReplaceAll(s, "%29", ")")
 	s = strings.ReplaceAll(s, "~", "%7e")
 	return s
 }

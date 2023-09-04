@@ -9,8 +9,11 @@ import (
 	"github.com/imroc/req/v3"
 )
 
-const stagingURL = "https://logistics-stage.ecpay.com.tw/Express"
-const productionURL = "https://logistics.ecpay.com.tw/Express"
+const shipStagingURL = "https://logistics-stage.ecpay.com.tw/Express"
+const shipProductionURL = "https://logistics.ecpay.com.tw/Express"
+
+const paymentStagingURL = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5"
+const paymentProductionURL = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
 
 type EcpayConfig struct {
 	MerchantID   string
@@ -18,9 +21,11 @@ type EcpayConfig struct {
 	HashIV       string
 	IsProduction bool
 
-	SenderName     string
-	SenderPhone    string
-	ServerReplyURL string
+	SenderName         string
+	SenderPhone        string
+	ShipServerReplyURL string
+
+	PaymentServerReplyURL string
 }
 
 type ChooseShipStoreConfig struct {
@@ -69,34 +74,46 @@ type ShipOrderResponse struct {
 	Status            string
 }
 
-type EcpayShipping interface {
+type PaymentConfig struct {
+	MerchantTradeNo string
+	TradeDate       time.Time
+	Amount          float32
+	EntreeName      string
+	SupportPayments []string
+	StoreID         string
+	ClientReplyURL  string
+}
+
+type Ecpay interface {
 	ChooseShipStore(config ChooseShipStoreConfig) (string, error)
 	CreateShipOrder(config CreateShippingOrderConfig) (string, error)
 	ParseShipOrderResponse(resp string) (ShipOrderResponse, error)
+
+	CreatePaymentOrder(config PaymentConfig) (string, error)
 }
 
-type EcpayShippingImpl struct {
+type EcpayImpl struct {
 	EcpayConfig
 	client *req.Client
 }
 
-func NewEcpayShipping(config EcpayConfig) EcpayShipping {
+func NewEcpay(config EcpayConfig) Ecpay {
 	client := req.C().SetTimeout(30 * time.Second)
 
-	return &EcpayShippingImpl{
+	return &EcpayImpl{
 		EcpayConfig: config,
 		client:      client,
 	}
 }
 
-func (e *EcpayShippingImpl) getURL() string {
+func (e *EcpayImpl) getShipURL() string {
 	if e.IsProduction {
-		return productionURL
+		return shipProductionURL
 	}
-	return stagingURL
+	return shipStagingURL
 }
 
-func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (string, error) {
+func (e *EcpayImpl) ChooseShipStore(config ChooseShipStoreConfig) (string, error) {
 	postData := map[string]string{
 		"MerchantID":       e.MerchantID,
 		"MerchantTradeNo":  config.MerchantTradeNo,
@@ -112,7 +129,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 	for key, value := range postData {
 		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
 	}
-	url := fmt.Sprintf("%s/map", e.getURL())
+	url := fmt.Sprintf("%s/map", e.getShipURL())
 
 	html := fmt.Sprintf(`
 		<!DOCTYPE html>
@@ -138,7 +155,7 @@ func (e *EcpayShippingImpl) ChooseShipStore(config ChooseShipStoreConfig) (strin
 	return html, nil
 }
 
-func (e *EcpayShippingImpl) CreateShipOrder(config CreateShippingOrderConfig) (string, error) {
+func (e *EcpayImpl) CreateShipOrder(config CreateShippingOrderConfig) (string, error) {
 	params := map[string]string{
 		"MerchantID":        e.MerchantID,
 		"MerchantTradeNo":   config.MerchantTradeNo,
@@ -158,16 +175,16 @@ func (e *EcpayShippingImpl) CreateShipOrder(config CreateShippingOrderConfig) (s
 		"ReceiverEmail":     config.ReceiverEmail,
 		"ReceiverStoreID":   config.ReceiverStoreID,
 		"ClientReplyURL":    config.ClientReplyURL,
-		"ServerReplyURL":    e.ServerReplyURL,
+		"ServerReplyURL":    e.ShipServerReplyURL,
 		"PlatformID":        "",
 	}
-	checkMac := NewCheckMacValueService(e.EcpayConfig).GenerateCheckMacValue(params)
+	checkMac := NewShipMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
 	params["CheckMacValue"] = checkMac
 
 	resp, err := e.client.R().SetFormData(params).
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetHeader("Cache-Control", "no-cache").
-		Post(fmt.Sprintf("%v/Create", e.getURL()))
+		Post(fmt.Sprintf("%v/Create", e.getShipURL()))
 	if err != nil {
 		return "", err
 	}
@@ -179,7 +196,7 @@ func (e *EcpayShippingImpl) CreateShipOrder(config CreateShippingOrderConfig) (s
 	return param[1], nil
 }
 
-func (e *EcpayShippingImpl) ParseShipOrderResponse(resp string) (ShipOrderResponse, error) {
+func (e *EcpayImpl) ParseShipOrderResponse(resp string) (ShipOrderResponse, error) {
 	var response ShipOrderResponse
 	values, err := url.ParseQuery(resp)
 	if err != nil {
@@ -201,6 +218,84 @@ func (e *EcpayShippingImpl) ParseShipOrderResponse(resp string) (ShipOrderRespon
 	}
 	response.Status = TransferStatus(response.ShippingStoreType, response.RtnCode)
 	return response, err
+}
+
+func (e *EcpayImpl) getPaymentURL() string {
+	if e.IsProduction {
+		return paymentProductionURL
+	}
+	return paymentStagingURL
+}
+
+var supportPayments = []string{
+	"Credit",
+	"WebATM",
+	"ATM",
+	"CVS",
+	"BARCODE",
+	"TWQR",
+}
+
+func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
+	params := map[string]string{
+		"MerchantID":        e.MerchantID,
+		"MerchantTradeNo":   config.MerchantTradeNo,
+		"MerchantTradeDate": config.TradeDate.Format("2006/01/02 15:04:05"),
+		"PaymentType":       "aio",
+		"ChoosePayment":     "ALL",
+		"TotalAmount":       fmt.Sprintf("%.0f", config.Amount),
+		"TradeDesc":         config.EntreeName,
+		"ItemName":          config.EntreeName,
+		"ReturnURL":         e.PaymentServerReplyURL,
+		"StoreID":           config.StoreID,
+		"EncryptType":       "1",
+		"OrderResultURL":    config.ClientReplyURL,
+	}
+	var ignorePayments []string
+	for _, supportPayment := range supportPayments {
+		var find = false
+		for _, choosePayment := range config.SupportPayments {
+			if choosePayment == supportPayment {
+				find = true
+				break
+			}
+		}
+		if !find {
+			ignorePayments = append(ignorePayments, supportPayment)
+		}
+	}
+	params["IgnorePayment"] = strings.Join(ignorePayments, "#")
+
+	checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
+	params["CheckMacValue"] = checkMac
+
+	postDataHtml := ""
+	for key, value := range params {
+		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
+	}
+	url := fmt.Sprintf("%s", e.getPaymentURL())
+	html := fmt.Sprintf(`
+		<!DOCTYPE html>
+					<html>
+					<head>
+						<title></title>
+					</head>
+					<body>
+						<form id="myForm" method="POST" action="%s">
+							%s
+						</form>
+
+						<script>
+							// Automatically submit the form when the page loads
+							document.addEventListener("DOMContentLoaded", function() {
+								document.getElementById("myForm").submit();
+							});
+						</script>
+					</body>
+					</html>
+	`, url, postDataHtml)
+
+	return html, nil
 }
 
 func TransferStoreType(storeType string) string {
