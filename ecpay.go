@@ -343,7 +343,7 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	response.StoreID = respMap["StoreID"]
 	response.RtnCode = respMap["RtnCode"]
 	response.RtnMsg = respMap["RtnMsg"]
-	response.BankTransactionID = respMap["BankTransactionID"]
+	response.BankTransactionID = respMap["TradeNo"]
 	response.Amount = amount
 	response.TradeDate = respMap["TradeDate"]
 	response.PaymentType = respMap["PaymentType"]
