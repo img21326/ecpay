@@ -264,7 +264,7 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 		"ReturnURL":         e.PaymentServerReplyURL,
 		"StoreID":           config.StoreID,
 		"EncryptType":       "1",
-		"OrderResultURL":    config.ClientReplyURL,
+		"ClientBackURL":     config.ClientReplyURL,
 	}
 	var ignorePayments []string
 	for _, supportPayment := range supportPayments {

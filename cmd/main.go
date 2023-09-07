@@ -65,7 +65,7 @@ func main() {
 	})
 
 	resp, err := ec.CreatePaymentOrder(ecpayShipping.PaymentConfig{
-		MerchantTradeNo: "test1ddqr9",
+		MerchantTradeNo: "test1ddss",
 		TradeDate:       time.Now(),
 		Amount:          150,
 		EntreeName:      "name",
