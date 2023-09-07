@@ -275,7 +275,7 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 	for key, value := range params {
 		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
 	}
-	url := fmt.Sprintf("%s", e.getPaymentURL())
+	url := e.getPaymentURL()
 	html := fmt.Sprintf(`
 		<!DOCTYPE html>
 					<html>
@@ -302,7 +302,7 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 
 type PaymentResponse struct {
 	MerchantID        string
-	MerchantTradeNo   string
+	TradeNo           string
 	StoreID           string
 	RtnCode           string
 	RtnMsg            string
@@ -311,6 +311,7 @@ type PaymentResponse struct {
 	TradeDate         string
 	PaymentType       string
 	PaymentFee        float64
+	PaymentDate       time.Time
 	Simulation        bool
 }
 
@@ -334,10 +335,11 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	amount, _ := strconv.ParseFloat(respMap["TradeAmt"], 64)
 	paymentFee, _ := strconv.ParseFloat(respMap["PaymentTypeChargeFee"], 64)
 	simulation := respMap["SimulatePaid"] == "1"
+	paymentDate, _ := time.Parse("2006/01/02 15:04:05", respMap["PaymentDate"])
 
 	var response *PaymentResponse
 	response.MerchantID = respMap["MerchantID"]
-	response.MerchantTradeNo = respMap["MerchantTradeNo"]
+	response.TradeDate = respMap["MerchantTradeNo"]
 	response.StoreID = respMap["StoreID"]
 	response.RtnCode = respMap["RtnCode"]
 	response.RtnMsg = respMap["RtnMsg"]
@@ -346,6 +348,7 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	response.TradeDate = respMap["TradeDate"]
 	response.PaymentType = respMap["PaymentType"]
 	response.PaymentFee = paymentFee
+	response.PaymentDate = paymentDate
 	response.Simulation = simulation
 	return response, nil
 }
