@@ -337,7 +337,7 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	simulation := respMap["SimulatePaid"] == "1"
 	paymentDate, _ := time.Parse("2006/01/02 15:04:05", respMap["PaymentDate"])
 
-	var response *PaymentResponse
+	var response *PaymentResponse = &PaymentResponse{}
 	response.MerchantID = respMap["MerchantID"]
 	response.TradeDate = respMap["MerchantTradeNo"]
 	response.StoreID = respMap["StoreID"]
