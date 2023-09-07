@@ -339,7 +339,7 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 
 	var response *PaymentResponse = &PaymentResponse{}
 	response.MerchantID = respMap["MerchantID"]
-	response.TradeDate = respMap["MerchantTradeNo"]
+	response.TradeNo = respMap["MerchantTradeNo"]
 	response.StoreID = respMap["StoreID"]
 	response.RtnCode = respMap["RtnCode"]
 	response.RtnMsg = respMap["RtnMsg"]
