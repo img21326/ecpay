@@ -85,19 +85,6 @@ type PaymentConfig struct {
 	ClientReplyURL  string
 }
 
-type PaymentResponse struct {
-	MerchantID        string
-	MerchantTradeNo   string
-	StoreID           string
-	RtnCode           string
-	RtnMsg            string
-	BankTransactionID string
-	Amount            float64
-	TradeDate         string
-	PaymentType       string
-	PaymentFee        float64
-}
-
 type Ecpay interface {
 	ChooseShipStore(config ChooseShipStoreConfig) (string, error)
 	CreateShipOrder(config CreateShippingOrderConfig) (string, error)
@@ -313,6 +300,24 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 	return html, nil
 }
 
+type PaymentResponse struct {
+	MerchantID        string
+	MerchantTradeNo   string
+	StoreID           string
+	RtnCode           string
+	RtnMsg            string
+	BankTransactionID string
+	Amount            float64
+	TradeDate         string
+	PaymentType       string
+	PaymentFee        float64
+	Simulation        bool
+}
+
+func (p *PaymentResponse) HasPaid() bool {
+	return p.RtnCode == "1"
+}
+
 func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	values, err := url.ParseQuery(resp)
 	if err != nil {
@@ -325,12 +330,10 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 		}
 		respMap[key] = value[0]
 	}
-	checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(respMap)
-	if checkMac != values.Get("CheckMacValue") {
-		return nil, fmt.Errorf("check mac value error")
-	}
+
 	amount, _ := strconv.ParseFloat(respMap["TradeAmt"], 64)
 	paymentFee, _ := strconv.ParseFloat(respMap["PaymentTypeChargeFee"], 64)
+	simulation := respMap["SimulatePaid"] == "1"
 
 	var response *PaymentResponse
 	response.MerchantID = respMap["MerchantID"]
@@ -343,5 +346,6 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	response.TradeDate = respMap["TradeDate"]
 	response.PaymentType = respMap["PaymentType"]
 	response.PaymentFee = paymentFee
+	response.Simulation = simulation
 	return response, nil
 }
