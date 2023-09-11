@@ -390,10 +390,10 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	if val, ok := respMap["process_date"]; ok {
 		response.ProcessDate = val
 	}
-	if val, ok := respMap["Card4No"]; ok {
+	if val, ok := respMap["card4no"]; ok {
 		response.Card4No = val
 	}
-	if val, ok := respMap["AuthCode"]; ok {
+	if val, ok := respMap["auth_code"]; ok {
 		response.AuthCode = val
 	}
 
