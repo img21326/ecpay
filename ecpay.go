@@ -328,6 +328,15 @@ type PaymentResponse struct {
 	PaymentFee        float64
 	PaymentDate       time.Time
 	Simulation        bool
+
+	// more info ..
+	WebATMAccBank  string
+	WebATMAccNo    string
+	WebATMBankName string
+	PaymentNo      string
+	ProcessDate    string
+	Card4No        string
+	AuthCode       string
 }
 
 func (p *PaymentResponse) HasPaid() bool {
@@ -365,6 +374,29 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	response.PaymentFee = paymentFee
 	response.PaymentDate = paymentDate
 	response.Simulation = simulation
+
+	if val, ok := respMap["WebATMAccBank"]; ok {
+		response.WebATMAccBank = val
+	}
+	if val, ok := respMap["WebATMAccNo"]; ok {
+		response.WebATMAccNo = val
+	}
+	if val, ok := respMap["WebATMBankName"]; ok {
+		response.WebATMBankName = val
+	}
+	if val, ok := respMap["PaymentNo"]; ok {
+		response.PaymentNo = val
+	}
+	if val, ok := respMap["process_date"]; ok {
+		response.ProcessDate = val
+	}
+	if val, ok := respMap["Card4No"]; ok {
+		response.Card4No = val
+	}
+	if val, ok := respMap["AuthCode"]; ok {
+		response.AuthCode = val
+	}
+
 	return response, nil
 }
 
