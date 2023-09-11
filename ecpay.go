@@ -1,6 +1,7 @@
 package ecpay
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -16,11 +17,15 @@ const shipProductionURL = "https://logistics.ecpay.com.tw/Express"
 const paymentStagingURL = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5"
 const paymentProductionURL = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
 
+const creditPaymentStatusStagingURL = ""
+const creditPaymentStatusProductionURL = "https://payment.ecpay.com.tw/CreditDetail/QueryTrade/V2"
+
 type EcpayConfig struct {
-	MerchantID   string
-	HashKey      string
-	HashIV       string
-	IsProduction bool
+	MerchantID     string
+	HashKey        string
+	HashIV         string
+	CreditCheckKey string
+	IsProduction   bool
 
 	SenderName         string
 	SenderPhone        string
@@ -85,6 +90,13 @@ type PaymentConfig struct {
 	ClientReplyURL  string
 }
 
+type CreditPaymentStatusConfig struct {
+	MerchantTradeNo string
+	RefundID        string
+	TradeNo         string
+	Amount          float32
+}
+
 type Ecpay interface {
 	ChooseShipStore(config ChooseShipStoreConfig) (string, error)
 	CreateShipOrder(config CreateShippingOrderConfig) (string, error)
@@ -92,6 +104,8 @@ type Ecpay interface {
 
 	CreatePaymentOrder(config PaymentConfig) (string, error)
 	ParsePaymentResult(resp string) (*PaymentResponse, error)
+
+	GetCreditPaymentStatus(config CreditPaymentStatusConfig) (*CreditPaymentStatusResponse, error)
 }
 
 type EcpayImpl struct {
@@ -252,6 +266,7 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 		"StoreID":           config.StoreID,
 		"EncryptType":       "1",
 		"ClientBackURL":     config.ClientReplyURL,
+		"NeedExtraPaidInfo": "Y",
 	}
 	var ignorePayments []string
 	for _, supportPayment := range supportPayments {
@@ -350,5 +365,55 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	response.PaymentFee = paymentFee
 	response.PaymentDate = paymentDate
 	response.Simulation = simulation
+	return response, nil
+}
+
+type CreditPaymentStatusResponse struct {
+	TradeID int     `json:"TradeID"`
+	Amount  float32 `json:"Amount"`
+	Status  string  `json:"Status"`
+}
+
+func (r *CreditPaymentStatusResponse) IsAuthorized() bool {
+	return r.Status == "已授權"
+}
+
+func (r *CreditPaymentStatusResponse) IsPaid() bool {
+	return r.Status == "已關帳"
+}
+
+func (r *CreditPaymentStatusResponse) IsRefunded() bool {
+	return r.Status == "已取消"
+}
+
+func (e *EcpayImpl) GetCreditPaymentStatus(config CreditPaymentStatusConfig) (*CreditPaymentStatusResponse, error) {
+	params := map[string]string{
+		"MerchantID":      e.MerchantID,
+		"CreditRefundId":  config.RefundID,
+		"CreditAmount":    strconv.FormatFloat(float64(config.Amount), 'f', 0, 64),
+		"CreditCheckCode": e.CreditCheckKey,
+	}
+	checkMac := NewShipMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
+	params["CheckMacValue"] = checkMac
+	resp, err := e.client.R().SetFormData(params).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetHeader("Cache-Control", "no-cache").
+		Post(creditPaymentStatusProductionURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *CreditPaymentStatusResponse
+	values, _ := url.ParseQuery(resp.String())
+	rtnMsg := values.Get("RtnMsg")
+	rtnValue := values.Get("RtnValue")
+
+	if rtnMsg != "" {
+		return nil, fmt.Errorf("get credit payment status error: %v", rtnMsg)
+	}
+	err = json.Unmarshal([]byte(rtnValue), &response)
+	if err != nil {
+		return nil, err
+	}
 	return response, nil
 }
