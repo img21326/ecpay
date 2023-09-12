@@ -585,5 +585,5 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		res.RtnMsg = retParams.Get("RtnMsg")
 		return res, nil
 	}
-	return nil, fmt.Errorf("can't refund")
+	return nil, fmt.Errorf("close data was %v", closeData["status"].(string))
 }
