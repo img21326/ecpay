@@ -1,7 +1,6 @@
 package ecpay
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -14,11 +13,8 @@ import (
 const shipStagingURL = "https://logistics-stage.ecpay.com.tw/Express"
 const shipProductionURL = "https://logistics.ecpay.com.tw/Express"
 
-const paymentStagingURL = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5"
-const paymentProductionURL = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
-
-const creditPaymentStatusStagingURL = ""
-const creditPaymentStatusProductionURL = "https://payment.ecpay.com.tw/CreditDetail/QueryTrade/V2"
+const paymentStagingURL = "https://payment-stage.ecpay.com.tw/Cashier"
+const paymentProductionURL = "https://payment.ecpay.com.tw/Cashier"
 
 type EcpayConfig struct {
 	MerchantID     string
@@ -90,11 +86,8 @@ type PaymentConfig struct {
 	ClientReplyURL  string
 }
 
-type CreditPaymentStatusConfig struct {
+type QueryConfig struct {
 	MerchantTradeNo string
-	RefundID        string
-	TradeNo         string
-	Amount          float32
 }
 
 type Ecpay interface {
@@ -105,7 +98,7 @@ type Ecpay interface {
 	CreatePaymentOrder(config PaymentConfig) (string, error)
 	ParsePaymentResult(resp string) (*PaymentResponse, error)
 
-	GetCreditPaymentStatus(config CreditPaymentStatusConfig) (*CreditPaymentStatusResponse, error)
+	QueryPayment(config QueryConfig) (*PaymentResponse, error)
 }
 
 type EcpayImpl struct {
@@ -310,7 +303,7 @@ func (e *EcpayImpl) CreatePaymentOrder(config PaymentConfig) (string, error) {
 						</script>
 					</body>
 					</html>
-	`, url, postDataHtml)
+	`, fmt.Sprintf("%s/AioCheckOut/V5", url), postDataHtml)
 
 	return html, nil
 }
@@ -337,6 +330,9 @@ type PaymentResponse struct {
 	ProcessDate    string
 	Card4No        string
 	AuthCode       string
+
+	// from where create
+	By string
 }
 
 func (p *PaymentResponse) HasPaid() bool {
@@ -374,6 +370,7 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	response.PaymentFee = paymentFee
 	response.PaymentDate = paymentDate
 	response.Simulation = simulation
+	response.By = "notify"
 
 	if val, ok := respMap["WebATMAccBank"]; ok {
 		response.WebATMAccBank = val
@@ -400,52 +397,40 @@ func (e *EcpayImpl) ParsePaymentResult(resp string) (*PaymentResponse, error) {
 	return response, nil
 }
 
-type CreditPaymentStatusResponse struct {
-	TradeID int     `json:"TradeID"`
-	Amount  float32 `json:"Amount"`
-	Status  string  `json:"Status"`
-}
-
-func (r *CreditPaymentStatusResponse) IsAuthorized() bool {
-	return r.Status == "已授權"
-}
-
-func (r *CreditPaymentStatusResponse) IsPaid() bool {
-	return r.Status == "已關帳"
-}
-
-func (r *CreditPaymentStatusResponse) IsRefunded() bool {
-	return r.Status == "已取消"
-}
-
-func (e *EcpayImpl) GetCreditPaymentStatus(config CreditPaymentStatusConfig) (*CreditPaymentStatusResponse, error) {
+func (e *EcpayImpl) QueryPayment(config QueryConfig) (*PaymentResponse, error) {
 	params := map[string]string{
 		"MerchantID":      e.MerchantID,
-		"CreditRefundId":  config.RefundID,
-		"CreditAmount":    strconv.FormatFloat(float64(config.Amount), 'f', 0, 64),
-		"CreditCheckCode": e.CreditCheckKey,
+		"MerchantTradeNo": config.MerchantTradeNo,
+		"TimeStamp":       strconv.Itoa(int(time.Now().Unix())),
 	}
-	checkMac := NewShipMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
+	checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
 	params["CheckMacValue"] = checkMac
+
 	resp, err := e.client.R().SetFormData(params).
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetHeader("Cache-Control", "no-cache").
-		Post(creditPaymentStatusProductionURL)
+		Post(fmt.Sprintf("%s/QueryTradeInfo/V5", e.getPaymentURL()))
 	if err != nil {
 		return nil, err
 	}
-
-	var response *CreditPaymentStatusResponse
-	values, _ := url.ParseQuery(resp.String())
-	rtnMsg := values.Get("RtnMsg")
-	rtnValue := values.Get("RtnValue")
-
-	if rtnMsg != "" {
-		return nil, fmt.Errorf("get credit payment status error: %v", rtnMsg)
-	}
-	err = json.Unmarshal([]byte(rtnValue), &response)
+	respString := resp.String()
+	retParams, err := url.ParseQuery(respString)
 	if err != nil {
 		return nil, err
 	}
-	return response, nil
+	amount, _ := strconv.ParseFloat(retParams.Get("TradeAmt"), 64)
+
+	var paymentResp *PaymentResponse = &PaymentResponse{}
+	paymentResp.MerchantID = retParams.Get("MerchantID")
+	paymentResp.TradeNo = retParams.Get("MerchantTradeNo")
+	paymentResp.StoreID = retParams.Get("StoreID")
+	paymentResp.BankTransactionID = retParams.Get("TradeNo")
+	paymentResp.Amount = amount
+	paymentResp.TradeDate = retParams.Get("TradeDate")
+	paymentResp.PaymentType = retParams.Get("PaymentType")
+	paymentResp.PaymentFee, _ = strconv.ParseFloat(retParams.Get("PaymentTypeChargeFee"), 64)
+	paymentResp.PaymentDate, _ = time.Parse("2006/01/02 15:04:05", retParams.Get("PaymentDate"))
+	paymentResp.RtnCode = retParams.Get("TradeStatus")
+	paymentResp.By = "query"
+	return paymentResp, nil
 }
