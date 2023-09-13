@@ -480,6 +480,9 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 	if err != nil {
 		return nil, err
 	}
+	if result["RtnCode"].(string) != "" {
+		return nil, fmt.Errorf("get credit card payment error: %v", result["RtnMsg"].(string))
+	}
 	var queryResult map[string]interface{} = make(map[string]interface{})
 	err = json.Unmarshal([]byte(result["RtnValue"].(string)), &queryResult)
 	if err != nil {
