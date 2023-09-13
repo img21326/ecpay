@@ -480,19 +480,9 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 	if err != nil {
 		return nil, err
 	}
-	if result["RtnCode"].(string) != "" {
-		return nil, fmt.Errorf("get credit card payment error: %v", result["RtnMsg"].(string))
-	}
-	var queryResult map[string]interface{} = make(map[string]interface{})
-	err = json.Unmarshal([]byte(result["RtnValue"].(string)), &queryResult)
-	if err != nil {
-		return nil, err
-	}
-	var closeData map[string]interface{} = make(map[string]interface{})
-	err = json.Unmarshal([]byte(queryResult["close_data"].(string)), &closeData)
-	if err != nil {
-		return nil, err
-	}
+	rtnValue := result["RtnValue"].(map[string]interface{})
+	rtnStatus := rtnValue["status"].(string)
+
 	params = map[string]string{
 		"MerchantID":      e.MerchantID,
 		"MerchantTradeNo": config.MerchantTradeNo,
@@ -500,7 +490,9 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		"Action":          "",
 		"TotalAmount":     fmt.Sprintf("%.0f", config.Amount),
 	}
-	switch closeData["status"].(string) {
+
+	var res *RefundResponse = &RefundResponse{}
+	switch rtnStatus {
 	case "已授權":
 		params["Action"] = "N"
 		checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
@@ -509,7 +501,7 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		resp, err := e.client.R().SetFormData(params).
 			SetHeader("Content-Type", "application/x-www-form-urlencoded").
 			SetHeader("Cache-Control", "no-cache").
-			Post(fmt.Sprintf("%s/CreditDetail/QueryTrade/V2", e.getPaymentURL()))
+			Post(fmt.Sprintf("%s/CreditDetail/DoAction", e.getPaymentURL()))
 		if err != nil {
 			return nil, err
 		}
@@ -518,11 +510,28 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		if err != nil {
 			return nil, err
 		}
-		var res *RefundResponse = &RefundResponse{}
 		res.RtnCode = retParams.Get("RtnCode")
 		res.RtnMsg = retParams.Get("RtnMsg")
-		return res, nil
-	case "要關帳":
+	case "已關帳":
+		params["Action"] = "R"
+		checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
+		params["CheckMacValue"] = checkMac
+
+		resp, err := e.client.R().SetFormData(params).
+			SetHeader("Content-Type", "application/x-www-form-urlencoded").
+			SetHeader("Cache-Control", "no-cache").
+			Post(fmt.Sprintf("%s/CreditDetail/DoAction", e.getPaymentURL()))
+		if err != nil {
+			return nil, err
+		}
+		respString := resp.String()
+		retParams, err := url.ParseQuery(respString)
+		if err != nil {
+			return nil, err
+		}
+		res.RtnCode = retParams.Get("RtnCode")
+		res.RtnMsg = retParams.Get("RtnMsg")
+	default:
 		params["Action"] = "E"
 		checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
 		params["CheckMacValue"] = checkMac
@@ -530,7 +539,7 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		resp, err := e.client.R().SetFormData(params).
 			SetHeader("Content-Type", "application/x-www-form-urlencoded").
 			SetHeader("Cache-Control", "no-cache").
-			Post(fmt.Sprintf("%s/CreditDetail/QueryTrade/V2", e.getPaymentURL()))
+			Post(fmt.Sprintf("%s/CreditDetail/DoAction", e.getPaymentURL()))
 		if err != nil {
 			return nil, err
 		}
@@ -539,12 +548,8 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		if err != nil {
 			return nil, err
 		}
-		var res *RefundResponse = &RefundResponse{}
 		res.RtnCode = retParams.Get("RtnCode")
 		res.RtnMsg = retParams.Get("RtnMsg")
-		if !res.IsSuccess() {
-			return nil, fmt.Errorf("close credit card payment error: %v", res.RtnMsg)
-		}
 		params["Action"] = "N"
 		checkMac = NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
 		params["CheckMacValue"] = checkMac
@@ -552,7 +557,7 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		resp, err = e.client.R().SetFormData(params).
 			SetHeader("Content-Type", "application/x-www-form-urlencoded").
 			SetHeader("Cache-Control", "no-cache").
-			Post(fmt.Sprintf("%s/CreditDetail/QueryTrade/V2", e.getPaymentURL()))
+			Post(fmt.Sprintf("%s/CreditDetail/DoAction", e.getPaymentURL()))
 		if err != nil {
 			return nil, err
 		}
@@ -563,28 +568,9 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		}
 		res.RtnCode = retParams.Get("RtnCode")
 		res.RtnMsg = retParams.Get("RtnMsg")
-		return res, nil
-	case "已關帳":
-		params["Action"] = "R"
-		checkMac := NewPaymentMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
-		params["CheckMacValue"] = checkMac
-
-		resp, err := e.client.R().SetFormData(params).
-			SetHeader("Content-Type", "application/x-www-form-urlencoded").
-			SetHeader("Cache-Control", "no-cache").
-			Post(fmt.Sprintf("%s/CreditDetail/QueryTrade/V2", e.getPaymentURL()))
-		if err != nil {
-			return nil, err
-		}
-		respString := resp.String()
-		retParams, err := url.ParseQuery(respString)
-		if err != nil {
-			return nil, err
-		}
-		var res *RefundResponse = &RefundResponse{}
-		res.RtnCode = retParams.Get("RtnCode")
-		res.RtnMsg = retParams.Get("RtnMsg")
-		return res, nil
 	}
-	return nil, fmt.Errorf("close data was %v", closeData["status"].(string))
+	if !res.IsSuccess() {
+		return nil, fmt.Errorf("close credit card payment error: %v", res.RtnMsg)
+	}
+	return res, nil
 }
