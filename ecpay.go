@@ -475,15 +475,13 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 		return nil, err
 	}
 	respString := resp.String()
-	retParams, err := url.ParseQuery(respString)
+	var result map[string]interface{} = make(map[string]interface{})
+	err = json.Unmarshal([]byte(respString), &result)
 	if err != nil {
 		return nil, err
 	}
-	if retParams.Get("RtnMsg") != "" {
-		return nil, fmt.Errorf("query credit card payment info error: %v", retParams.Get("RtnMsg"))
-	}
 	var queryResult map[string]interface{} = make(map[string]interface{})
-	err = json.Unmarshal([]byte(retParams.Get("RtnValue")), &queryResult)
+	err = json.Unmarshal([]byte(result["RtnValue"].(string)), &queryResult)
 	if err != nil {
 		return nil, err
 	}
