@@ -480,6 +480,11 @@ func (e *EcpayImpl) RefundPayment(config RefundConfig) (*RefundResponse, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	if result["RtnCode"].(string) != "1" {
+		return nil, fmt.Errorf("query credit card payment error: %v", result["RtnMsg"].(string))
+	}
+
 	rtnValue := result["RtnValue"].(map[string]interface{})
 	rtnStatus := rtnValue["status"].(string)
 
