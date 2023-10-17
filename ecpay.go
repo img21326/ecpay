@@ -2,6 +2,7 @@ package ecpay
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -109,6 +110,8 @@ type EcpayImpl struct {
 	client *req.Client
 }
 
+var ErrDuplicateCreateShip = errors.New("duplicate create ship order")
+
 func NewEcpay(config EcpayConfig) Ecpay {
 	client := req.C().SetTimeout(30 * time.Second)
 
@@ -203,6 +206,9 @@ func (e *EcpayImpl) CreateShipOrder(config CreateShippingOrderConfig) (string, e
 	respString := resp.String()
 	param := strings.Split(respString, "|")
 	if param[0] != "1" {
+		if len(param) > 1 && param[1] == "廠商訂單編號重覆，請重新設定" {
+			return "", ErrDuplicateCreateShip
+		}
 		return "", fmt.Errorf("response error status: %v, err: %v", param[0], param[1])
 	}
 	return param[1], nil
