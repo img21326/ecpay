@@ -1,6 +1,10 @@
 package ecpay
 
+import "strings"
+
 func TransferStoreType(storeType string) string {
+	storeTypes := strings.Split(storeType, "_")
+	storeType = storeTypes[len(storeTypes)-1]
 	switch storeType {
 	case "FAMIC2C":
 		return "FAMI"

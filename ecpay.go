@@ -11,8 +11,8 @@ import (
 	"github.com/imroc/req/v3"
 )
 
-const shipStagingURL = "https://logistics-stage.ecpay.com.tw/Express"
-const shipProductionURL = "https://logistics.ecpay.com.tw/Express"
+const shipStagingURL = "https://logistics-stage.ecpay.com.tw/"
+const shipProductionURL = "https://logistics.ecpay.com.tw/"
 
 const paymentStagingURL = "https://payment-stage.ecpay.com.tw"
 const paymentProductionURL = "https://payment.ecpay.com.tw"
@@ -94,6 +94,7 @@ type QueryConfig struct {
 type Ecpay interface {
 	ChooseShipStore(config ChooseShipStoreConfig) (string, error)
 	CreateShipOrder(config CreateShippingOrderConfig) (string, error)
+	QueryShip(config QueryShipConfig) (ShipOrderResponse, error)
 	ParseShipOrderResponse(resp string) (ShipOrderResponse, error)
 
 	CreatePaymentOrder(config PaymentConfig) (string, error)
@@ -140,7 +141,7 @@ func (e *EcpayImpl) ChooseShipStore(config ChooseShipStoreConfig) (string, error
 	for key, value := range postData {
 		postDataHtml += fmt.Sprintf(`<input type="hidden" name="%s" value="%s">`, key, value)
 	}
-	url := fmt.Sprintf("%s/map", e.getShipURL())
+	url := fmt.Sprintf("%s/Express/map", e.getShipURL())
 
 	html := fmt.Sprintf(`
 		<!DOCTYPE html>
@@ -195,7 +196,7 @@ func (e *EcpayImpl) CreateShipOrder(config CreateShippingOrderConfig) (string, e
 	resp, err := e.client.R().SetFormData(params).
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetHeader("Cache-Control", "no-cache").
-		Post(fmt.Sprintf("%v/Create", e.getShipURL()))
+		Post(fmt.Sprintf("%v/Express/Create", e.getShipURL()))
 	if err != nil {
 		return "", err
 	}
@@ -205,6 +206,51 @@ func (e *EcpayImpl) CreateShipOrder(config CreateShippingOrderConfig) (string, e
 		return "", fmt.Errorf("response error status: %v, err: %v", param[0], param[1])
 	}
 	return param[1], nil
+}
+
+type QueryShipConfig struct {
+	MerchantTradeNo string
+}
+
+func (e *EcpayImpl) QueryShip(config QueryShipConfig) (ShipOrderResponse, error) {
+	params := map[string]string{
+		"MerchantID":      e.MerchantID,
+		"MerchantTradeNo": config.MerchantTradeNo,
+		"TimeStamp":       fmt.Sprintf("%d", time.Now().Unix()),
+	}
+	checkMac := NewShipMacValue(e.EcpayConfig).GenerateCheckMacValue(params)
+	params["CheckMacValue"] = checkMac
+	resp, err := e.client.R().SetFormData(params).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetHeader("Cache-Control", "no-cache").
+		Post(fmt.Sprintf("%v/Helper/QueryLogisticsTradeInfo/V4", e.getShipURL()))
+	if err != nil {
+		return ShipOrderResponse{}, err
+	}
+	respString := resp.String()
+	fmt.Printf("resp: %v\n", respString)
+
+	var response ShipOrderResponse
+	values, err := url.ParseQuery(respString)
+	if err != nil {
+		return response, err
+	}
+	response.MerchantID = values.Get("MerchantID")
+	response.MerchantTradeNo = values.Get("MerchantTradeNo")
+	response.RtnCode = values.Get("LogisticsStatus")
+	response.RtnMsg = values.Get("RtnMsg")
+	response.LogisticsID = values.Get("AllPayLogisticsID")
+	response.ShippingStoreType = TransferStoreType(values.Get("LogisticsType"))
+	response.GoodsAmount = values.Get("GoodsAmount")
+	response.UpdateStatusDate = values.Get("TradeDate")
+
+	if response.ShippingStoreType == "711" {
+		response.CSVNo = values.Get("CVSPaymentNo") + values.Get("CVSValidationNo")
+	} else {
+		response.CSVNo = values.Get("CVSPaymentNo")
+	}
+	response.Status = TransferStatus(response.ShippingStoreType, response.RtnCode)
+	return response, err
 }
 
 func (e *EcpayImpl) ParseShipOrderResponse(resp string) (ShipOrderResponse, error) {
